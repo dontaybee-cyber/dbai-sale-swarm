@@ -1,0 +1,8 @@
+pandas
+googlesearch-python
+beautifulsoup4
+requests
+google-search-results
+python-dotenv
+google-genai
+streamlit
