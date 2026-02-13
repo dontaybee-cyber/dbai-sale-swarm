@@ -72,17 +72,46 @@ def save_env(key, value):
     with open(env_path, "w") as f:
         f.writelines(new_lines)
 
-# --- Main App ---
-render_header()
+def run_full_sequence(niche, location):
+    """Executes the full acquisition sequence: Scout -> Analyst -> Sniper."""
+    with st.status("🚀 Engaging DBAI Swarm...", expanded=True) as status:
+        
+        # 1. Scout
+        st.write("🔭 Scouting for leads...")
+        try:
+            scout_agent.scout_leads(niche, location)
+            st.write("✅ Scout Mission Complete.")
+        except Exception as e:
+            st.error(f"Scout failed: {e}")
+            status.update(label="❌ Mission Failed", state="error")
+            return
 
-# Sidebar Navigation
-st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to", ["📊 Mission Control", "🔭 Scout", "🧠 Analyst", "🎯 Sniper", "⚙️ Settings"])
+        # 2. Analyst
+        st.write("🧠 Analyzing business data...")
+        try:
+            analyst_agent.main()
+            st.write("✅ Analysis Complete.")
+        except Exception as e:
+            st.error(f"Analyst failed: {e}")
+            status.update(label="❌ Mission Failed", state="error")
+            return
 
-# --- TAB 1: MISSION CONTROL ---
-if page == "📊 Mission Control":
-    st.subheader("Live Mission Stats")
+        # 3. Sniper
+        st.write("🎯 Firing sniper emails...")
+        try:
+            sniper_agent.main()
+            st.write("✅ Outreach Complete.")
+        except Exception as e:
+            st.error(f"Sniper failed: {e}")
+            status.update(label="❌ Mission Failed", state="error")
+            return
 
+        status.update(label="✅ Full Swarm Sequence Complete!", state="complete")
+
+def main():
+    render_header()
+
+    # --- Top Metrics ---
     leads_df = load_csv("leads_queue.csv")
     audits_df = load_csv("audits_to_send.csv")
 
@@ -91,84 +120,96 @@ if page == "📊 Mission Control":
     leads_count = len(leads_df) if not leads_df.empty else 0
     analyzed_count = len(audits_df) if not audits_df.empty else 0
     sent_count = len(audits_df[audits_df["Status"] == "Sent"]) if not audits_df.empty and "Status" in audits_df.columns else 0
+    replies_count = len(audits_df[audits_df["Status"] == "Replied"]) if not audits_df.empty and "Status" in audits_df.columns else 0
 
     col1.metric("Leads Found", leads_count, delta="Scout")
     col2.metric("Sites Analyzed", analyzed_count, delta="Analyst")
     col3.metric("Emails Sent", sent_count, delta="Sniper")
+    col4.metric("Replies", replies_count, delta="Closer")
 
     st.divider()
-    st.subheader("Pipeline Status")
-    if not leads_df.empty and "Status" in leads_df.columns:
-        st.bar_chart(leads_df["Status"].value_counts())
-    else:
-        st.info("No data available for visualization.")
 
-# --- TAB 2: SCOUT ---
-elif page == "🔭 Scout":
-    st.subheader("Lead Discovery")
-    col1, col2 = st.columns(2)
-    niche = col1.text_input("Target Niche", value="Roofing", placeholder="e.g. Dentists")
-    location = col2.text_input("Target Location", value="Denver", placeholder="e.g. Chicago")
+    # --- Tabs Layout ---
+    tab1, tab2, tab3 = st.tabs(["🚀 Launchpad", "📊 Data & Logs", "⚙️ Config"])
 
-    if st.button("🚀 Launch Scout", type="primary"):
-        with st.status("Scout is searching...", expanded=True):
-            scout_agent.scout_leads(niche, location)
-        st.success("Mission Complete!")
-        st.rerun()
+    # --- TAB 1: LAUNCHPAD ---
+    with tab1:
+        st.subheader("Mission Control")
+        
+        c1, c2 = st.columns([1, 1])
+        with c1:
+            niche = st.text_input("Target Niche", value="Roofing", placeholder="e.g. Dentists")
+        with c2:
+            location = st.text_input("Target Location", value="Denver", placeholder="e.g. Chicago")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        if st.button("ACTIVATE SWARM 🚀", type="primary", use_container_width=True):
+            if niche and location:
+                run_full_sequence(niche, location)
+                st.rerun()
+            else:
+                st.warning("Please enter both Niche and Location.")
 
-    st.divider()
-    leads_df = load_csv("leads_queue.csv")
-    if not leads_df.empty:
-        st.dataframe(leads_df, use_container_width=True)
-
-# --- TAB 3: ANALYST ---
-elif page == "🧠 Analyst":
-    st.subheader("AI Analysis")
-    if st.button("🧠 Start Analysis", type="primary"):
-        with st.status("Analyst is working...", expanded=True):
-            analyst_agent.main()
-        st.success("Analysis Complete!")
-        st.rerun()
-
-    with st.expander("Live Agent Logs", expanded=True):
+    # --- TAB 2: DATA & LOGS ---
+    with tab2:
+        st.subheader("Mission Data")
+        
+        d1, d2 = st.columns(2)
+        
+        with d1:
+            st.markdown("### 🔭 Leads Queue")
+            if not leads_df.empty:
+                st.dataframe(leads_df, use_container_width=True)
+            else:
+                st.info("No leads found yet.")
+                
+        with d2:
+            st.markdown("### 🎯 Outreach Status")
+            if not audits_df.empty:
+                st.dataframe(audits_df, use_container_width=True)
+            else:
+                st.info("No audits generated yet.")
+                
+        st.divider()
+        st.subheader("📜 Live Mission Logs")
+        
         log_file = os.path.join("logs", "swarm.log")
+        if st.button("Refresh Logs"):
+            st.rerun()
+            
         if os.path.exists(log_file):
             with open(log_file, "r") as f:
                 lines = f.readlines()
-                st.code("".join(lines[-20:]), language="log")
+                st.code("".join(lines[-50:]), language="log")
         else:
-            st.info("No logs found.")
+            st.warning("No logs found.")
 
-# --- TAB 4: SNIPER ---
-elif page == "🎯 Sniper":
-    st.subheader("Email Outreach")
-    if st.button("🎯 Fire Sniper Emails", type="primary"):
-        with st.status("Sniper is engaging targets...", expanded=True):
-            sniper_agent.main()
-        st.success("Outreach Complete!")
-        st.rerun()
-
-    audits_df = load_csv("audits_to_send.csv")
-    if not audits_df.empty and "Status" in audits_df.columns:
-        sent_df = audits_df[audits_df["Status"] == "Sent"]
-        st.dataframe(sent_df, use_container_width=True)
-
-# --- TAB 5: SETTINGS ---
-elif page == "⚙️ Settings":
-    st.subheader("Configuration")
-    
-    with st.form("config_form"):
-        gemini_key = st.text_input("GEMINI_API_KEY", value=get_config("GEMINI_API_KEY"), type="password")
-        serp_key = st.text_input("SERP_API_KEY", value=get_config("SERP_API_KEY"), type="password")
-        email_user = st.text_input("EMAIL_USER", value=get_config("EMAIL_USER"))
-        email_pass = st.text_input("EMAIL_PASS", value=get_config("EMAIL_PASS"), type="password")
+    # --- TAB 3: CONFIG ---
+    with tab3:
+        st.subheader("System Configuration")
         
-        if st.form_submit_button("Save Config"):
-            if not hasattr(st, "secrets"):
-                save_env("GEMINI_API_KEY", gemini_key)
-                save_env("SERP_API_KEY", serp_key)
-                save_env("EMAIL_USER", email_user)
-                save_env("EMAIL_PASS", email_pass)
-                st.success("Configuration saved to .env!")
-            else:
-                st.warning("Cannot write to .env in Cloud mode. Please set secrets in Streamlit Cloud dashboard.")
+        with st.form("config_form"):
+            c1, c2 = st.columns(2)
+            with c1:
+                st.markdown("#### 🧠 AI & Search")
+                gemini_key = st.text_input("GEMINI_API_KEY", value=get_config("GEMINI_API_KEY"), type="password")
+                serp_key = st.text_input("SERP_API_KEY", value=get_config("SERP_API_KEY"), type="password")
+            
+            with c2:
+                st.markdown("#### 📧 Email Credentials")
+                email_user = st.text_input("EMAIL_USER", value=get_config("EMAIL_USER"))
+                email_pass = st.text_input("EMAIL_PASS", value=get_config("EMAIL_PASS"), type="password")
+            
+            if st.form_submit_button("Save Configuration"):
+                if not hasattr(st, "secrets"):
+                    save_env("GEMINI_API_KEY", gemini_key)
+                    save_env("SERP_API_KEY", serp_key)
+                    save_env("EMAIL_USER", email_user)
+                    save_env("EMAIL_PASS", email_pass)
+                    st.success("Configuration saved to .env!")
+                else:
+                    st.warning("Cannot write to .env in Cloud mode. Please set secrets in Streamlit Cloud dashboard.")
+
+if __name__ == "__main__":
+    main()
