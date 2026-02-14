@@ -20,6 +20,61 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- Task 1: Inject Custom CSS (The SaaS Polish) ---
+def inject_custom_css():
+    st.markdown(f"""
+    <style>
+        /* Main Background */
+        .stApp {{
+            background-color: {config.BACKGROUND_COLOR};
+        }}
+        
+        /* Card Styling for Containers */
+        div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column;"] > div[data-testid="stVerticalBlock"] {{
+            background-color: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }}
+
+        /* Metric Styling */
+        div[data-testid="stMetric"] {{
+            background-color: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            text-align: center;
+        }}
+        
+        div[data-testid="stMetricLabel"] {{
+            display: flex;
+            justify-content: center;
+            color: #64748B;
+            font-weight: 600;
+        }}
+
+        div[data-testid="stMetricValue"] {{
+            color: {config.PRIMARY_COLOR};
+        }}
+
+        /* Primary Button Styling */
+        div.stButton > button[kind="primary"] {{
+            background-color: {config.PRIMARY_COLOR};
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }}
+
+        div.stButton > button[kind="primary"]:hover {{
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(75, 0, 130, 0.3);
+        }}
+    </style>
+    """, unsafe_allow_html=True)
+
 # --- Helper Functions ---
 def get_config(key, default=""):
     """Get configuration from st.secrets (Cloud) or os.getenv (Local)."""
@@ -33,10 +88,11 @@ def get_config(key, default=""):
     return os.getenv(key, default)
 
 def render_header():
-    st.markdown("""
-    <div style="background-color:{config.BACKGROUND_COLOR};padding:15px;border-bottom: 3px solid {config.PRIMARY_COLOR};border-radius: 5px;margin-bottom: 20px;">
-        <h1 style="color:{config.TEXT_COLOR}; margin:0; font-size: 24px;">🚀 {config.APP_NAME}</h1>
-        <p style="color:{config.TEXT_COLOR}; margin:0; font-size: 14px; opacity: 0.8;">{config.TAGLINE}</p>
+    # Task 2: The Hero Header
+    st.markdown(f"""
+    <div style="text-align: center; padding: 3rem 0 2rem 0;">
+        <h1 style="color:{config.TEXT_COLOR}; margin:0; font-size: 3rem; font-weight: 800; letter-spacing: -0.025em;">🚀 {config.APP_NAME}</h1>
+        <p style="color:{config.TEXT_COLOR}; margin-top: 0.5rem; font-size: 1.25rem; opacity: 0.8;">{config.TAGLINE}</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -110,6 +166,7 @@ def run_full_sequence(niche, location):
         status.update(label="✅ Full Swarm Sequence Complete!", state="complete")
 
 def main():
+    inject_custom_css()
     render_header()
 
     # --- Sidebar Footer ---
@@ -127,68 +184,75 @@ def main():
     sent_count = len(audits_df[audits_df["Status"] == "Sent"]) if not audits_df.empty and "Status" in audits_df.columns else 0
     replies_count = len(audits_df[audits_df["Status"] == "Replied"]) if not audits_df.empty and "Status" in audits_df.columns else 0
 
-    col1.metric("Leads Found", leads_count, delta="Scout")
-    col2.metric("Sites Analyzed", analyzed_count, delta="Analyst")
-    col3.metric("Emails Sent", sent_count, delta="Sniper")
-    col4.metric("Replies", replies_count, delta="Closer")
+    # Task 2: The Metrics Row (Styled)
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.metric("Leads Found", leads_count, delta="Scout")
+    with m2:
+        st.metric("Sites Analyzed", analyzed_count, delta="Analyst")
+    with m3:
+        st.metric("Emails Sent", sent_count, delta="Sniper")
+    with m4:
+        st.metric("Replies", replies_count, delta="Closer")
 
-    st.divider()
+    st.markdown("---")
 
     # --- Tabs Layout ---
     tab1, tab2, tab3 = st.tabs(["🚀 Launchpad", "📊 Data & Logs", "⚙️ Config"])
 
     # --- TAB 1: LAUNCHPAD ---
     with tab1:
+        # Task 3: The "Launchpad" Redesign
         st.subheader("Mission Control")
-        
-        c1, c2 = st.columns([1, 1])
-        with c1:
-            niche = st.text_input("Target Niche", value="Roofing", placeholder="e.g. Dentists")
-        with c2:
-            location = st.text_input("Target Location", value="Denver", placeholder="e.g. Chicago")
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        if st.button("ACTIVATE SWARM 🚀", type="primary", use_container_width=True):
-            if niche and location:
-                run_full_sequence(niche, location)
-                st.rerun()
-            else:
-                st.warning("Please enter both Niche and Location.")
+        with st.container(border=True):
+            c1, c2 = st.columns(2)
+            with c1:
+                niche = st.text_input("Target Niche", value="Roofing", placeholder="e.g. Dentists")
+            with c2:
+                location = st.text_input("Target Location", value="Denver", placeholder="e.g. Chicago")
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            if st.button("🚀 ACTIVATE SWARM", type="primary", use_container_width=True):
+                if niche and location:
+                    run_full_sequence(niche, location)
+                    st.rerun()
+                else:
+                    st.warning("Please enter both Niche and Location.")
 
     # --- TAB 2: DATA & LOGS ---
     with tab2:
+        # Task 4: Clean up the Data & Logs
         st.subheader("Mission Data")
         
         d1, d2 = st.columns(2)
         
         with d1:
-            st.markdown("### 🔭 Leads Queue")
+            st.markdown("#### 🔭 Leads Queue")
             if not leads_df.empty:
-                st.dataframe(leads_df, use_container_width=True)
+                st.dataframe(leads_df, use_container_width=True, height=400)
             else:
                 st.info("No leads found yet.")
                 
         with d2:
-            st.markdown("### 🎯 Outreach Status")
+            st.markdown("#### 🎯 Outreach Status")
             if not audits_df.empty:
-                st.dataframe(audits_df, use_container_width=True)
+                st.dataframe(audits_df, use_container_width=True, height=400)
             else:
                 st.info("No audits generated yet.")
                 
         st.divider()
-        st.subheader("📜 Live Mission Logs")
         
-        log_file = os.path.join("logs", "swarm.log")
-        if st.button("Refresh Logs"):
-            st.rerun()
-            
-        if os.path.exists(log_file):
-            with open(log_file, "r") as f:
-                lines = f.readlines()
-                st.code("".join(lines[-50:]), language="log")
-        else:
-            st.warning("No logs found.")
+        with st.expander("📜 Terminal Output (Live Logs)", expanded=False):
+            log_file = os.path.join("logs", "swarm.log")
+            if st.button("Refresh Logs"):
+                st.rerun()
+            if os.path.exists(log_file):
+                with open(log_file, "r") as f:
+                    lines = f.readlines()
+                    st.code("".join(lines[-50:]), language="log")
+            else:
+                st.warning("No logs found.")
 
     # --- TAB 3: CONFIG ---
     with tab3:
