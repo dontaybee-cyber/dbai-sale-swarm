@@ -3,6 +3,7 @@ import random
 import re
 import time
 from typing import Optional, Tuple, Dict
+from urllib.parse import urljoin
 
 import pandas as pd
 import requests
@@ -34,7 +35,7 @@ USER_AGENTS = [
 
 def fetch_site_text(url: str, timeout: int = 15, retries: int = 1) -> Tuple[Optional[str], Dict[str, str]]:
     ui.log_analyst(f"Fetching site text for: {url}")
-    socials = {}
+    socials = {"Contact_Page": None}
     
     for attempt in range(retries + 1):
         headers = {"User-Agent": random.choice(USER_AGENTS)}
@@ -50,10 +51,21 @@ def fetch_site_text(url: str, timeout: int = 15, retries: int = 1) -> Tuple[Opti
             for link in soup.find_all('a', href=True):
                 href = link['href']
                 lower_href = href.lower()
+                
+                # Social Media
                 if "facebook.com" in lower_href and "sharer" not in lower_href:
                     socials["Facebook"] = href
                 elif "linkedin.com" in lower_href and "share" not in lower_href:
                     socials["LinkedIn"] = href
+                elif "instagram.com" in lower_href:
+                    socials["Instagram"] = href
+                elif "twitter.com" in lower_href or "x.com" in lower_href:
+                    socials["Twitter"] = href
+                
+                # Contact Page Detection
+                if "contact" in lower_href and not socials.get("Contact_Page"):
+                    # Resolve relative URLs
+                    socials["Contact_Page"] = urljoin(url, href)
 
             text = soup.get_text(separator=" ", strip=True)
             if not text:
@@ -122,13 +134,22 @@ def heuristic_analysis(site_dna: str) -> str:
 
 def extract_email_from_text(text: str) -> Optional[str]:
     # Basic regex for email extraction
-    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    # Advanced regex to catch emails buried in scripts/tags
+    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     matches = re.findall(email_pattern, text)
+    
+    ignore_terms = ['sentry', 'no-reply', 'noreply', 'example', 'domain', 'email', 'username', 'user', 'test']
+    ignore_exts = ('.png', '.jpg', '.jpeg', '.gif', '.css', '.js', '.svg', '.woff', '.woff2', '.ttf', '.webp')
+
     if matches:
         for email in matches:
-            # Filter out common false positives (images, code files)
-            if not email.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.css', '.js', '.svg')):
-                return email
+            lower_email = email.lower()
+            # Filter out common false positives
+            if any(term in lower_email for term in ignore_terms):
+                continue
+            if lower_email.endswith(ignore_exts):
+                continue
+            return email
     return None
 
 def main():
@@ -184,21 +205,33 @@ def main():
                                 ui.log_success(f"Deep Search found email: {extracted_email}")
                                 break
 
+            # Waterfall Status Logic
+            status = "Dead End"
+            if extracted_email:
+                status = "Analyzed"
+            elif socials.get("Facebook") or socials.get("Instagram") or socials.get("LinkedIn") or socials.get("Twitter"):
+                status = "Requires DM"
+            elif socials.get("Contact_Page"):
+                status = "Use Form"
+
             out_rows.append({
                 "URL": url, 
                 "Pain Point": pain, 
-                "Status": "Analyzed",
+                "Status": status,
                 "Email": extracted_email,
                 "Facebook": socials.get("Facebook"),
-                "LinkedIn": socials.get("LinkedIn")
+                "LinkedIn": socials.get("LinkedIn"),
+                "Instagram": socials.get("Instagram"),
+                "Twitter": socials.get("Twitter"),
+                "Contact Page": socials.get("Contact_Page")
             })
-            leads_df.at[idx, "Status"] = "Analyzed"
+            leads_df.at[idx, "Status"] = "Processed"
             updated = True
         except Exception as e:
             ui.log_error(f"Unexpected error processing row {idx}: {e}")
 
     # Write audits_to_send.csv (append if exists)
-    out_df = pd.DataFrame(out_rows, columns=["URL", "Pain Point", "Status", "Email", "Facebook", "LinkedIn"])
+    out_df = pd.DataFrame(out_rows, columns=["URL", "Pain Point", "Status", "Email", "Facebook", "LinkedIn", "Instagram", "Twitter", "Contact Page"])
     if not out_df.empty:
         if os.path.exists("audits_to_send.csv"):
             # Check if columns match to prevent corruption
@@ -220,7 +253,7 @@ def main():
     # Save updated leads queue
     if updated:
         leads_df.to_csv("leads_queue.csv", index=False)
-        ui.log_info("Updated leads_queue.csv statuses to 'Analyzed'.")
+        ui.log_info("Updated leads_queue.csv statuses to 'Processed'.")
 
 
 if __name__ == "__main__":
