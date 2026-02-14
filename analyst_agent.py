@@ -72,11 +72,18 @@ def fetch_site_text(url: str, timeout: int = 15, retries: int = 1) -> Tuple[Opti
                 return None, socials
 
 def analyze_with_gemini(site_dna: str) -> Optional[str]:
-    prompt = (
-        "You are a Senior Business Auditor. Analyze the following website content and "
-        "identify ONE specific operational money leak a business auditor could solve with an AI Audit. "
-        "Return a single, punchy, high-conversion sentence (one sentence only).\n\n" + site_dna
-    )
+    prompt = f"""
+You are a high-end AI Automation Consultant. Analyze this local business website text.
+Find ONE specific inefficiency related to lead capture or customer service.
+Focus on things like: No instant web-chat, manual booking forms, no after-hours lead capture, or buried contact info.
+Write exactly ONE conversational sentence that I can drop into a cold email. 
+Format: Point out the specific flaw, and hint at the revenue they are losing.
+Do NOT use buzzwords like 'synergy', 'optimize', or 'paradigm'. Speak like a normal human.
+Example Good Output: "I noticed you don't have an automated web-chat on your site, which means any traffic landing there after 5 PM is likely bouncing to a competitor."
+Example Bad Output: "Your operational inefficiency regarding lead generation can be optimized with AI."
+Website Text:
+{site_dna}
+"""
     try:
         if not genai_available:
             ui.log_warning("GenAI not available, skipping Gemini analysis.")

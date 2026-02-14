@@ -16,8 +16,8 @@ try:
 except ImportError:
     GoogleSearch = None
 
-def load_known_domains() -> set:
-    """Load all known domains from leads_queue and audits_to_send to ensure fresh leads."""
+def get_known_domains() -> set:
+    """The 'Ironclad Ledger': Load all known domains to ensure zero repeated leads."""
     known_domains = set()
     files = ["leads_queue.csv", "audits_to_send.csv"]
     for f in files:
@@ -37,12 +37,13 @@ def scout_leads(niche, location, num_results=20):
     ui.SwarmHeader.display()
     ui.display_mission_briefing(niche, location)
     
-    # Task 2: Guarantee Fresh Leads
-    known_domains = load_known_domains()
+    # Task 1: The "Ironclad Ledger"
+    known_domains = get_known_domains()
     if known_domains:
         ui.log_info(f"Loaded {len(known_domains)} known domains to skip (Freshness Guarantee).")
     
-    query = f"{niche} in {location} business website"
+    # Task 2: High-Intent Search Operators (Filter aggregators at source)
+    query = f'"{niche}" "{location}" -site:yelp.com -site:bbb.org -site:facebook.com -site:linkedin.com -site:yellowpages.com -site:angi.com'
     ui.log_scout(f"Starting search for: [bold white]{query}[/bold white]")
     
     api_key = os.getenv("SERP_API_KEY")
