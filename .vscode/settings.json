@@ -1,0 +1,6 @@
+{
+    "python.defaultInterpreterPath": "c:\\Users\\Dell I5-Quadro\\Scout Agent\\Scout_Agent\\.venv\\Scripts\\python.exe",
+    "python.analysis.extraPaths": [
+        "c:\\Users\\Dell I5-Quadro\\Scout Agent\\Scout_Agent\\.venv\\Lib\\site-packages"
+    ]
+}

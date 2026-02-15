@@ -9,9 +9,17 @@ import swarm_config as config
 import scout_agent
 import analyst_agent
 import sniper_agent
+import closer_agent
 
 # Load environment variables (Local fallback)
 load_dotenv()
+
+# --- Cloud Secrets Sync ---
+try:
+    for key, value in st.secrets.items():
+        os.environ[key] = str(value)
+except Exception:
+    pass
 
 # --- Page Config ---
 st.set_page_config(
@@ -177,23 +185,24 @@ def main():
     leads_df = load_csv("leads_queue.csv")
     audits_df = load_csv("audits_to_send.csv")
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
 
     leads_count = len(leads_df) if not leads_df.empty else 0
     analyzed_count = len(audits_df) if not audits_df.empty else 0
     sent_count = len(audits_df[audits_df["Status"] == "Sent"]) if not audits_df.empty and "Status" in audits_df.columns else 0
     replies_count = len(audits_df[audits_df["Status"] == "Replied"]) if not audits_df.empty and "Status" in audits_df.columns else 0
+    follow_up_count = len(audits_df[audits_df["Status"] == "Followed Up"]) if not audits_df.empty and "Status" in audits_df.columns else 0
 
-    # Task 2: The Metrics Row (Styled)
-    m1, m2, m3, m4 = st.columns(4)
-    with m1:
-        st.metric("Leads Found", leads_count, delta="Scout")
-    with m2:
-        st.metric("Sites Analyzed", analyzed_count, delta="Analyst")
-    with m3:
-        st.metric("Emails Sent", sent_count, delta="Sniper")
-    with m4:
-        st.metric("Replies", replies_count, delta="Closer")
+    with col1:
+        st.metric("Leads Found", leads_count)
+    with col2:
+        st.metric("Sites Analyzed", analyzed_count)
+    with col3:
+        st.metric("Emails Sent", sent_count)
+    with col4:
+        st.metric("Replies", replies_count)
+    with col5:
+        st.metric("Follow-ups", follow_up_count)
 
     st.markdown("---")
 
@@ -219,6 +228,17 @@ def main():
                     st.rerun()
                 else:
                     st.warning("Please enter both Niche and Location.")
+
+            st.divider()
+
+            if st.button("🤝 Run Closer (Check Replies & Auto Follow-up)", type="secondary", use_container_width=True):
+                with st.status("Syncing Inbox...", expanded=True):
+                    try:
+                        closer_agent.main()
+                        st.success("Inbox sync complete!")
+                    except Exception as e:
+                        st.error(f"Closer Agent failed: {e}")
+                st.rerun()
 
     # --- TAB 2: MANUAL DMs ---
     with tab2:
@@ -288,6 +308,16 @@ def main():
             else:
                 st.info("No audits generated yet.")
                 
+        st.divider()
+
+        st.markdown("#### 📩 Replies Pipeline")
+        if not audits_df.empty and "Status" in audits_df.columns:
+            replied_df = audits_df[audits_df["Status"] == "Replied"]
+            if not replied_df.empty:
+                st.dataframe(replied_df, use_container_width=True, height=200)
+            else:
+                st.info("No replies recorded yet.")
+        
         st.divider()
         
         with st.expander("📜 Terminal Output (Live Logs)", expanded=False):
