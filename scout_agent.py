@@ -16,45 +16,42 @@ try:
 except ImportError:
     GoogleSearch = None
 
-def get_known_domains() -> set:
-    """The 'Ironclad Ledger': Load all known domains to ensure zero repeated leads."""
+def get_known_domains(client_key: str) -> set:
+    """The 'Ironclad Ledger': Load all known domains for a specific client to ensure zero repeated leads."""
+    if not client_key:
+        return set()
+    
     known_domains = set()
-    files = ["leads_queue.csv", "audits_to_send.csv"]
+    files = [f"leads_queue_{client_key}.csv", f"audits_to_send_{client_key}.csv"]
+    
     for f in files:
         if os.path.exists(f):
             try:
                 df = pd.read_csv(f, on_bad_lines='skip')
                 if "URL" in df.columns:
                     for url in df["URL"].dropna():
-                        domain = urlparse(str(url)).netloc.lower()
+                        domain = urlparse(str(url)).netloc.lower().replace('www.', '')
                         if domain:
                             known_domains.add(domain)
             except Exception:
                 pass
     return known_domains
 
-def scout_leads(niche, location, num_results=20):
+def scout_leads(niche, location, client_key, num_results=20):
     ui.SwarmHeader.display()
     ui.display_mission_briefing(niche, location)
 
-    master_domain_set = get_known_domains()
+    master_domain_set = get_known_domains(client_key)
     if master_domain_set:
-        ui.log_info(f"Loaded {len(master_domain_set)} known domains to skip (Freshness Guarantee).")
+        ui.log_info(f"Loaded {len(master_domain_set)} known domains to skip for client '{client_key}'.")
 
     query = f'"{niche}" "{location}" -site:yelp.com -site:bbb.org -site:facebook.com -site:linkedin.com -site:yellowpages.com -site:angi.com'
     ui.log_scout(f"Starting search for: [bold white]{query}[/bold white]")
 
     api_key = os.getenv("SERP_API_KEY")
     if not api_key:
-        ui.log_warning("SERP_API_KEY is missing from .env configuration.")
-        api_key = ui.console.input("[bold yellow]Please paste your SERP_API_KEY right now:[/bold yellow] ").strip()
-        if api_key:
-            with open(".env", "a") as f:
-                f.write(f"\nSERP_API_KEY={api_key}")
-            ui.log_success("Key appended to .env file.")
-        else:
-            ui.log_error("No key provided. Cannot proceed.")
-            return
+        ui.log_error("SERP_API_KEY is not configured. Please set it in your environment.")
+        return
 
     if GoogleSearch is None:
         ui.log_error("The 'google-search-results' library is not installed.")
@@ -110,22 +107,23 @@ def scout_leads(niche, location, num_results=20):
 
                 ui.log_success(f"Lead Found: {url}")
                 fresh_leads.append({"URL": url, "Status": "Unscanned"})
-                master_domain_set.add(host) # Add to master set to avoid duplicates in this session
+                master_domain_set.add(host)
 
                 if len(fresh_leads) >= TARGET_NEW_LEADS:
                     break
             
-            search_offset += 10 # Increment for the next page
+            search_offset += 10
 
         except Exception as e:
             ui.log_error(f"SerpAPI failed: {e}")
-            break # Exit on API error
+            break
             
     if fresh_leads:
+        leads_file = f"leads_queue_{client_key}.csv"
         df = pd.DataFrame(fresh_leads)
-        df.to_csv("leads_queue.csv", mode='a', index=False, header=not os.path.exists("leads_queue.csv"))
+        df.to_csv(leads_file, mode='a', index=False, header=not os.path.exists(leads_file))
         ui.display_dashboard(leads_found=len(fresh_leads))
-        ui.log_success(f"{len(fresh_leads)} new leads added to leads_queue.csv")
+        ui.log_success(f"{len(fresh_leads)} new leads added to {leads_file}")
     else:
         ui.log_warning("No new direct business websites found after deep search.")
 
@@ -133,20 +131,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Scout Agent - Lead Discovery")
     parser.add_argument("--niche", type=str, help="Target Niche")
     parser.add_argument("--location", type=str, help="Target Location")
+    parser.add_argument("--client_key", type=str, required=True, help="Client-specific key for data isolation")
     args = parser.parse_args()
 
     ui.SwarmHeader.display()
     
-    try:
-        if args.niche and args.location:
-            scout_leads(niche=args.niche, location=args.location)
-        else:
-            target_niche = ui.console.input("[bold green]Enter Target Niche[/bold green] (e.g. Roofing) [default: Plumbing]: ").strip() or "Plumbing"
-            target_location = ui.console.input("[bold green]Enter Target Location[/bold green] (e.g. Dallas) [default: Denver]: ").strip() or "Denver"
-
-            if target_niche and target_location:
-                scout_leads(niche=target_niche, location=target_location)
-            else:
-                ui.log_error("Niche and Location are required to run the Scout.")
-    except KeyboardInterrupt:
-        ui.console.print("\n[bold red]Aborted by user.[/bold red]")
+    scout_leads(niche=args.niche, location=args.location, client_key=args.client_key)

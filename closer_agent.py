@@ -82,21 +82,22 @@ Best,
         ui.log_error(f"Failed to send follow-up to {recipient_email}: {e}")
         return False
 
-def main():
+def main(client_key: str):
     ui.SwarmHeader.display()
     ui.log_closer("Closer Agent starting...")
     
-    if not os.path.exists("audits_to_send.csv"):
-        ui.log_error("audits_to_send.csv not found.")
+    audits_file = f"audits_to_send_{client_key}.csv"
+    
+    if not os.path.exists(audits_file):
+        ui.log_error(f"{audits_file} not found.")
         return
         
-    df = pd.read_csv("audits_to_send.csv")
+    df = pd.read_csv(audits_file)
     
     if "Sent Date" not in df.columns:
-        ui.log_error("No 'Sent Date' column found. Run sniper_agent.py first to generate sent data.")
+        ui.log_error(f"No 'Sent Date' column found in {audits_file}. Run sniper_agent.py first.")
         return
 
-    # Connect to IMAP once
     mail = get_imap_connection()
     if not mail:
         return
@@ -104,14 +105,12 @@ def main():
     followup_count = 0
     updated = False
 
-    # Use UI track for progress bar
     for idx, row in ui.track(df.iterrows(), total=len(df), description="[closer]Checking for replies...[/closer]"):
         status = str(row.get("Status", "")).lower()
         sent_date_str = str(row.get("Sent Date", ""))
         recipient_email = row.get("Email")
         url = row.get("URL")
 
-        # Only process rows that are 'Sent' and have a valid date
         if status == "sent" and sent_date_str and sent_date_str != "nan":
             try:
                 sent_date = datetime.strptime(sent_date_str, "%Y-%m-%d")
@@ -120,19 +119,17 @@ def main():
                 if days_passed >= 3:
                     ui.log_closer(f"Checking {recipient_email} (Sent {days_passed} days ago)...")
                     
-                    # Check for reply
                     if has_replied(mail, recipient_email):
                         ui.log_success(f"Reply detected from {recipient_email}. Marking as 'Replied'.")
                         df.at[idx, "Status"] = "Replied"
                         updated = True
                     else:
-                        # No reply, send follow-up
                         ui.log_closer(f"No reply from {recipient_email}. Sending follow-up...")
                         if send_followup_email(recipient_email, url):
                             df.at[idx, "Status"] = "Followed Up"
                             updated = True
                             followup_count += 1
-                            time.sleep(random.randint(30, 60)) # Anti-spam delay
+                            time.sleep(random.randint(30, 60))
             except ValueError:
                 ui.log_warning(f"Invalid date format for row {idx}: {sent_date_str}")
                 continue
@@ -140,11 +137,15 @@ def main():
     mail.logout()
 
     if updated:
-        df.to_csv("audits_to_send.csv", index=False)
+        df.to_csv(audits_file, index=False)
         ui.display_dashboard(followups_sent=followup_count)
-        ui.log_success(f"Process complete. Sent {followup_count} follow-ups.")
+        ui.log_success(f"Process complete. Sent {followup_count} follow-ups and updated {audits_file}.")
     else:
         ui.log_info("No follow-ups needed at this time.")
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Closer Agent - Follow-up and Reply Checker")
+    parser.add_argument("--client_key", required=True, help="Client key for isolating data files.")
+    args = parser.parse_args()
+    main(args.client_key)

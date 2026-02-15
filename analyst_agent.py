@@ -152,24 +152,26 @@ def extract_email_from_text(text: str) -> Optional[str]:
             return email
     return None
 
-def main():
+def main(client_key: str):
     ui.SwarmHeader.display()
     ui.log_analyst("Analyst Agent starting...")
-    
-    if not os.path.exists("leads_queue.csv"):
-        ui.log_error("leads_queue.csv not found in current directory.")
+
+    leads_file = f"leads_queue_{client_key}.csv"
+    audits_file = f"audits_to_send_{client_key}.csv"
+
+    if not os.path.exists(leads_file):
+        ui.log_error(f"{leads_file} not found in current directory.")
         return
 
-    leads_df = pd.read_csv("leads_queue.csv")
+    leads_df = pd.read_csv(leads_file)
     if "Status" not in leads_df.columns or "URL" not in leads_df.columns:
-        ui.log_error("leads_queue.csv must contain 'URL' and 'Status' columns.")
+        ui.log_error(f"{leads_file} must contain 'URL' and 'Status' columns.")
         return
 
     out_rows = []
     updated = False
-    ui.log_analyst(f"Found {len(leads_df)} rows in leads_queue.csv.")
+    ui.log_analyst(f"Found {len(leads_df)} rows in {leads_file}.")
 
-    # Use UI track for progress bar
     for idx, row in ui.track(leads_df.iterrows(), total=len(leads_df), description="[analyst]Analyzing Sites...[/analyst]"):
         try:
             if str(row.get("Status", "")).strip().lower() != "unscanned":
@@ -187,12 +189,11 @@ def main():
                 if not pain:
                     ui.log_analyst("No pain point from Gemini, falling back to heuristics.")
                     pain = heuristic_analysis(site_dna)
-                # Attempt to extract email from the site content
+                
                 extracted_email = extract_email_from_text(site_dna)
                 if extracted_email:
                     ui.log_success(f"Extracted email: {extracted_email}")
                 else:
-                    # Deep Email Discovery: Check sub-pages
                     base_domain = url.rstrip("/")
                     sub_paths = ["/contact", "/about", "/contact-us", "/about-us", "/privacy"]
                     for path in sub_paths:
@@ -204,8 +205,7 @@ def main():
                             if extracted_email:
                                 ui.log_success(f"Deep Search found email: {extracted_email}")
                                 break
-
-            # Waterfall Status Logic
+            
             status = "Dead End"
             if extracted_email:
                 status = "Analyzed"
@@ -230,31 +230,30 @@ def main():
         except Exception as e:
             ui.log_error(f"Unexpected error processing row {idx}: {e}")
 
-    # Write audits_to_send.csv (append if exists)
     out_df = pd.DataFrame(out_rows, columns=["URL", "Pain Point", "Status", "Email", "Facebook", "LinkedIn", "Instagram", "Twitter", "Contact Page"])
     if not out_df.empty:
-        if os.path.exists("audits_to_send.csv"):
-            # Check if columns match to prevent corruption
+        if os.path.exists(audits_file):
             try:
-                existing_cols = pd.read_csv("audits_to_send.csv", nrows=0).columns.tolist()
+                existing_cols = pd.read_csv(audits_file, nrows=0).columns.tolist()
                 if existing_cols == list(out_df.columns):
-                    out_df.to_csv("audits_to_send.csv", mode="a", index=False, header=False)
+                    out_df.to_csv(audits_file, mode="a", index=False, header=False)
                 else:
-                    ui.log_warning("CSV Schema mismatch (Old version detected). Overwriting audits_to_send.csv with new format.")
-                    out_df.to_csv("audits_to_send.csv", index=False)
+                    ui.log_warning(f"CSV Schema mismatch for {audits_file}. Overwriting with new format.")
+                    out_df.to_csv(audits_file, index=False)
             except Exception:
-                # If file is unreadable/corrupt, overwrite it
-                out_df.to_csv("audits_to_send.csv", index=False)
+                out_df.to_csv(audits_file, index=False)
         else:
-            out_df.to_csv("audits_to_send.csv", index=False)
+            out_df.to_csv(audits_file, index=False)
         ui.display_dashboard(sites_analyzed=len(out_df))
-        ui.log_success(f"Wrote {len(out_df)} rows to audits_to_send.csv")
+        ui.log_success(f"Wrote {len(out_df)} rows to {audits_file}")
 
-    # Save updated leads queue
     if updated:
-        leads_df.to_csv("leads_queue.csv", index=False)
-        ui.log_info("Updated leads_queue.csv statuses to 'Processed'.")
-
+        leads_df.to_csv(leads_file, index=False)
+        ui.log_info(f"Updated {leads_file} statuses to 'Processed'.")
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Analyst Agent - Site Analysis")
+    parser.add_argument("--client_key", type=str, required=True, help="Client-specific key for data isolation")
+    args = parser.parse_args()
+    main(args.client_key)

@@ -85,6 +85,7 @@ def inject_custom_css():
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+    st.session_state.client_key = None
 
 def render_login():
     """Renders the login screen."""
@@ -96,15 +97,16 @@ def render_login():
     
     with st.container(border=True):
         st.markdown("<h2 style='text-align: center; color: #4B0082;'>DBAI SaleSwarm Access</h2>", unsafe_allow_html=True)
-        client_key = st.text_input("Enter License Key", type="password", key="login_key")
+        client_key_input = st.text_input("Enter License Key", type="password", key="login_key")
         
         if st.button("Login", use_container_width=True, type="primary"):
             # Check against Streamlit secrets
             valid_keys = st.secrets.get("CLIENT_KEYS", [])
             master_key = os.getenv("MASTER_KEY")
 
-            if client_key in valid_keys or (master_key and client_key == master_key):
+            if client_key_input in valid_keys or (master_key and client_key_input == master_key):
                 st.session_state.authenticated = True
+                st.session_state.client_key = client_key_input
                 st.rerun()
             else:
                 st.error("Invalid License Key. Access Denied.")
@@ -130,11 +132,15 @@ def render_header():
     </div>
     """, unsafe_allow_html=True)
 
-def load_csv(filename):
-    if os.path.exists(filename):
+def load_csv(filename, client_key):
+    if not client_key:
+        return pd.DataFrame()
+    
+    isolated_filename = f"{filename.split('.')[0]}_{client_key}.csv"
+    if os.path.exists(isolated_filename):
         try:
-            return pd.read_csv(filename)
-        except:
+            return pd.read_csv(isolated_filename)
+        except Exception:
             return pd.DataFrame()
     return pd.DataFrame()
 
@@ -163,14 +169,14 @@ def save_env(key, value):
     with open(env_path, "w") as f:
         f.writelines(new_lines)
 
-def run_full_sequence(niche, location):
+def run_full_sequence(niche, location, client_key):
     """Executes the full acquisition sequence: Scout -> Analyst -> Sniper."""
     with st.status("🚀 Engaging DBAI Swarm...", expanded=True) as status:
         
         # 1. Scout
         st.write("🔭 Scouting for leads...")
         try:
-            scout_agent.scout_leads(niche, location)
+            scout_agent.scout_leads(niche, location, client_key)
             st.write("✅ Scout Mission Complete.")
         except Exception as e:
             st.error(f"Scout failed: {e}")
@@ -180,7 +186,7 @@ def run_full_sequence(niche, location):
         # 2. Analyst
         st.write("🧠 Analyzing business data...")
         try:
-            analyst_agent.main()
+            analyst_agent.main(client_key)
             st.write("✅ Analysis Complete.")
         except Exception as e:
             st.error(f"Analyst failed: {e}")
@@ -190,7 +196,7 @@ def run_full_sequence(niche, location):
         # 3. Sniper
         st.write("🎯 Firing sniper emails...")
         try:
-            sniper_agent.main()
+            sniper_agent.main(client_key)
             st.write("✅ Outreach Complete.")
         except Exception as e:
             st.error(f"Sniper failed: {e}")
@@ -213,8 +219,8 @@ def main():
     st.sidebar.caption(f"Powered by {config.APP_NAME} v{config.APP_VERSION}")
 
     # --- Top Metrics ---
-    leads_df = load_csv("leads_queue.csv")
-    audits_df = load_csv("audits_to_send.csv")
+    leads_df = load_csv("leads_queue.csv", st.session_state.client_key)
+    audits_df = load_csv("audits_to_send.csv", st.session_state.client_key)
 
     col1, col2, col3, col4, col5 = st.columns(5)
 
@@ -255,7 +261,7 @@ def main():
             
             if st.button("🚀 ACTIVATE SWARM", type="primary", use_container_width=True):
                 if niche and location:
-                    run_full_sequence(niche, location)
+                    run_full_sequence(niche, location, st.session_state.client_key)
                     st.rerun()
                 else:
                     st.warning("Please enter both Niche and Location.")
@@ -265,7 +271,7 @@ def main():
             if st.button("🤝 Run Closer (Check Replies & Auto Follow-up)", type="secondary", use_container_width=True):
                 with st.status("Syncing Inbox...", expanded=True):
                     try:
-                        closer_agent.main()
+                        closer_agent.main(st.session_state.client_key)
                         st.success("Inbox sync complete!")
                     except Exception as e:
                         st.error(f"Closer Agent failed: {e}")
@@ -275,13 +281,13 @@ def main():
     with tab2:
         st.subheader("Manual Attack CRM")
         
-        audits_df = load_csv("audits_to_send.csv")
-        if audits_df.empty:
+        audits_df_dm = load_csv("audits_to_send.csv", st.session_state.client_key)
+        if audits_df_dm.empty:
             st.info("No leads available yet. Run the Swarm first!")
         else:
             # Filter for manual leads
-            if "Status" in audits_df.columns:
-                dm_leads = audits_df[audits_df["Status"].isin(["Requires DM", "Use Form"])]
+            if "Status" in audits_df_dm.columns:
+                dm_leads = audits_df_dm[audits_df_dm["Status"].isin(["Requires DM", "Use Form"])]
                 
                 if dm_leads.empty:
                     st.success("Inbox Zero! No manual follow-ups required right now.")
@@ -327,23 +333,26 @@ def main():
         
         with d1:
             st.markdown("#### 🔭 Leads Queue")
-            if not leads_df.empty:
-                st.dataframe(leads_df, use_container_width=True, height=400)
+            leads_df_display = load_csv("leads_queue.csv", st.session_state.client_key)
+            if not leads_df_display.empty:
+                st.dataframe(leads_df_display, use_container_width=True, height=400)
             else:
                 st.info("No leads found yet.")
                 
         with d2:
             st.markdown("#### 🎯 Outreach Status")
-            if not audits_df.empty:
-                st.dataframe(audits_df, use_container_width=True, height=400)
+            audits_df_display = load_csv("audits_to_send.csv", st.session_state.client_key)
+            if not audits_df_display.empty:
+                st.dataframe(audits_df_display, use_container_width=True, height=400)
             else:
                 st.info("No audits generated yet.")
                 
         st.divider()
 
         st.markdown("#### 📩 Replies Pipeline")
-        if not audits_df.empty and "Status" in audits_df.columns:
-            replied_df = audits_df[audits_df["Status"] == "Replied"]
+        replies_df_display = load_csv("audits_to_send.csv", st.session_state.client_key)
+        if not replies_df_display.empty and "Status" in replies_df_display.columns:
+            replied_df = replies_df_display[replies_df_display["Status"] == "Replied"]
             if not replied_df.empty:
                 st.dataframe(replied_df, use_container_width=True, height=200)
             else:
@@ -366,25 +375,22 @@ def main():
     with tab4:
         st.subheader("System Configuration")
         
+        st.success("🟢 API Connections: Secure & Active")
+        st.info("DBAI SaleSwarm Enterprise infrastructure is managing your compute resources.")
+
         with st.form("config_form"):
             c1, c2 = st.columns(2)
             with c1:
-                st.markdown("#### 🧠 AI & Search")
-                gemini_key = st.text_input("GEMINI_API_KEY", value=get_config("GEMINI_API_KEY"), type="password")
-                serp_key = st.text_input("SERP_API_KEY", value=get_config("SERP_API_KEY"), type="password")
-            
-            with c2:
                 st.markdown("#### 📧 Email Credentials")
                 email_user = st.text_input("EMAIL_USER", value=get_config("EMAIL_USER"))
                 email_pass = st.text_input("EMAIL_PASS", value=get_config("EMAIL_PASS"), type="password")
 
-            st.markdown("#### 🔑 License")
-            license_key = st.text_input("License Key", value=get_config("LICENSE_KEY"), type="password")
+            with c2:
+                st.markdown("#### 🔑 License")
+                license_key = st.text_input("License Key", value=get_config("LICENSE_KEY"), type="password")
             
             if st.form_submit_button("Save Configuration"):
                 if not hasattr(st, "secrets"):
-                    save_env("GEMINI_API_KEY", gemini_key)
-                    save_env("SERP_API_KEY", serp_key)
                     save_env("EMAIL_USER", email_user)
                     save_env("EMAIL_PASS", email_pass)
                     save_env("LICENSE_KEY", license_key)
@@ -395,4 +401,5 @@ def main():
         st.divider()
         if st.button("Log Out", type="secondary"):
             st.session_state.authenticated = False
+            st.session_state.client_key = None
             st.rerun()

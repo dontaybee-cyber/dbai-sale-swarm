@@ -140,43 +140,37 @@ def enrich_email_with_hunter(domain: str) -> Optional[str]:
         return None
 
 
-def main():
+def main(client_key: str):
     ui.SwarmHeader.display()
     ui.log_sniper("Sniper Agent starting...")
     
-    if not os.path.exists("audits_to_send.csv"):
-        ui.log_error("audits_to_send.csv not found in current directory.")
+    audits_file = f"audits_to_send_{client_key}.csv"
+    
+    if not os.path.exists(audits_file):
+        ui.log_error(f"{audits_file} not found in current directory.")
         return
     
-    audits_df = pd.read_csv("audits_to_send.csv", on_bad_lines='skip')
+    audits_df = pd.read_csv(audits_file, on_bad_lines='skip')
     
     required_columns = ["Status", "URL", "Pain Point"]
     if not all(col in audits_df.columns for col in required_columns):
-        ui.log_error(f"audits_to_send.csv must contain these columns: {', '.join(required_columns)}")
+        ui.log_error(f"{audits_file} must contain these columns: {', '.join(required_columns)}")
         return
     
-    # Check if Email column exists - if not, provide instructions
     if "Email" not in audits_df.columns:
         ui.log_error("EMAIL COLUMN MISSING - ACTION REQUIRED:")
         ui.log_info("To send sniper emails, you need contact emails for each lead.")
-        ui.log_info("OPTION 1: Use Hunter.io (Email Finder API)")
-        ui.log_info("OPTION 2: Use RocketReach")
-        ui.log_info("OPTION 3: Manual Enrichment")
         return
     
-    # Filter only 'Analyzed' status rows
     pending_audits = audits_df[audits_df["Status"].str.lower() == "analyzed"]
     
     if pending_audits.empty:
         ui.log_success("No pending audits to send. All leads have been contacted.")
         return
     
-    ui.log_sniper(f"Found {len(pending_audits)} audits ready to send.")
+    ui.log_sniper(f"Found {len(pending_audits)} audits ready to send in {audits_file}.")
     
-    # Task 1: Initialize duplicate tracking
     emailed_this_session = set()
-    
-    # Task 1: Load historical sent emails to prevent duplicates
     sent_history = set()
     if "Status" in audits_df.columns and "Email" in audits_df.columns:
         sent_rows = audits_df[audits_df["Status"] == "Sent"]
@@ -187,7 +181,6 @@ def main():
 
     sent_count = 0
     
-    # Use UI track for progress bar
     for idx, row in ui.track(pending_audits.iterrows(), total=len(pending_audits), description="[sniper]Sending Emails...[/sniper]"):
         try:
             url = row.get("URL")
@@ -201,7 +194,6 @@ def main():
             if not recipient_email or pd.isna(recipient_email):
                 domain = url.replace('https://', '').replace('http://', '').split('/')[0]
                 
-                # Attempt Hunter enrichment
                 if HUNTER_API_KEY:
                     ui.log_sniper(f"Attempting Hunter enrichment for {domain}")
                     found = enrich_email_with_hunter(domain)
@@ -214,7 +206,6 @@ def main():
                     ui.log_warning(f"No contact email found for {domain}. Skipping {url}.")
                     continue
             
-            # Task 1: Duplicate Checks
             current_email_lower = str(recipient_email).strip().lower()
             if current_email_lower in emailed_this_session:
                 ui.log_warning(f"Skipping {recipient_email} - Already emailed this session.")
@@ -223,15 +214,12 @@ def main():
                 ui.log_warning(f"Skipping {recipient_email} - Already marked as Sent in history.")
                 continue
 
-            # Send the sniper email
             if send_sniper_email(recipient_email, url, pain_point):
                 audits_df.at[idx, "Status"] = "Sent"
                 audits_df.at[idx, "Sent Date"] = datetime.now().strftime("%Y-%m-%d")
                 sent_count += 1
                 emailed_this_session.add(current_email_lower)
                 
-                # Safety measure: avoid spam filters
-                # Don't send more than 5 emails per hour
                 time.sleep(random.randint(30, 60))
             else:
                 ui.log_warning(f"Failed to send email for {url}")
@@ -239,15 +227,17 @@ def main():
         except Exception as e:
             ui.log_error(f"Unexpected error processing row {idx}: {e}")
     
-    # Save updated CSV
     if sent_count > 0:
-        audits_df.to_csv("audits_to_send.csv", index=False)
+        audits_df.to_csv(audits_file, index=False)
         ui.display_dashboard(emails_sent=sent_count)
         ui.log_success(f"Successfully sent {sent_count} sniper emails!")
-        ui.log_success(f"Updated audits_to_send.csv status to 'Sent'")
+        ui.log_success(f"Updated {audits_file} status to 'Sent'")
     else:
         ui.log_info("No emails sent. Check configuration and contact data.")
 
-
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser(description="Sniper Agent - Email Outreach")
+    parser.add_argument("--client_key", required=True, help="Client key for isolating data files.")
+    args = parser.parse_args()
+    main(args.client_key)
