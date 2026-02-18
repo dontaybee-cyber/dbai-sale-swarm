@@ -6,10 +6,8 @@ import ui_manager as ui
 import swarm_config as config
 
 # Import Agents
-import scout_agent
-import analyst_agent
-import sniper_agent
-import closer_agent
+# NOTE: Keep agent imports lazy (inside button handlers) so a single missing optional
+# dependency (SMTP/IMAP, SerpAPI, etc.) doesn't crash the whole Streamlit app at startup.
 
 # Load environment variables (Local fallback)
 load_dotenv()
@@ -172,7 +170,16 @@ def save_env(key, value):
 def run_full_sequence(niche, location, client_key):
     """Executes the full acquisition sequence: Scout -> Analyst -> Sniper."""
     with st.status("🚀 Engaging DBAI Swarm...", expanded=True) as status:
-        
+        # Lazy imports so missing optional deps don't crash the whole app at startup.
+        try:
+            import scout_agent
+            import analyst_agent
+            import sniper_agent
+        except Exception as e:
+            st.error(f"Failed to import one or more agents: {e}")
+            status.update(label="❌ Mission Failed", state="error")
+            return
+
         # 1. Scout
         st.write("🔭 Scouting for leads...")
         try:
@@ -271,6 +278,7 @@ def main():
             if st.button("🤝 Run Closer (Check Replies & Auto Follow-up)", type="secondary", use_container_width=True):
                 with st.status("Syncing Inbox...", expanded=True):
                     try:
+                        import closer_agent
                         closer_agent.main(st.session_state.client_key)
                         st.success("Inbox sync complete!")
                     except Exception as e:
@@ -389,13 +397,15 @@ def main():
                 license_key = st.text_input("License Key", value=get_config("LICENSE_KEY"), type="password")
             
             if st.form_submit_button("Save Configuration"):
-                if not hasattr(st, "secrets"):
+                # Streamlit Cloud cannot persist writes to .env. Use an explicit flag for local mode.
+                cloud_mode = os.getenv("CLOUD_MODE", "").strip().lower() in ("1", "true", "yes")
+                if not cloud_mode:
                     save_env("EMAIL_USER", email_user)
                     save_env("EMAIL_PASS", email_pass)
                     save_env("LICENSE_KEY", license_key)
                     st.success("Configuration saved to .env!")
                 else:
-                    st.warning("Cannot write to .env in Cloud mode. Please set secrets in Streamlit Cloud dashboard.")
+                    st.warning("Cloud mode: cannot write to .env. Please set secrets in Streamlit Cloud dashboard.")
         
         st.divider()
         if st.button("Log Out", type="secondary"):
