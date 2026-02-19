@@ -9,12 +9,16 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 import ui_manager as ui
+import email
+from email.policy import default
+import google.generativeai as genai
 
 load_dotenv()
 
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 SENDER_NAME = os.getenv("SENDER_NAME", "Scout Agent Team")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 def get_imap_connection():
     """Connect to Gmail IMAP to check for replies."""
@@ -26,20 +30,72 @@ def get_imap_connection():
         ui.log_error(f"Failed to connect to IMAP: {e}")
         return None
 
-def has_replied(mail, recipient_email: str) -> bool:
-    """Check if the recipient has replied to us."""
+def get_latest_reply_body(mail, recipient_email: str) -> str | None:
+    """Fetch the body of the latest email from the recipient."""
     try:
         mail.select("inbox")
-        # Search for emails FROM the recipient
         status, messages = mail.search(None, f'(FROM "{recipient_email}")')
-        if status == "OK":
-            email_ids = messages[0].split()
-            return len(email_ids) > 0
-        return False
+        if status != "OK" or not messages[0]:
+            return None
+
+        latest_email_id = messages[0].split()[-1]
+        status, msg_data = mail.fetch(latest_email_id, "(RFC822)")
+        
+        if status != "OK":
+            return None
+
+        for response_part in msg_data:
+            if isinstance(response_part, tuple):
+                msg = email.message_from_bytes(response_part[1], policy=default)
+                
+                if msg.is_multipart():
+                    for part in msg.walk():
+                        content_type = part.get_content_type()
+                        content_disposition = str(part.get("Content-Disposition"))
+                        
+                        if content_type == "text/plain" and "attachment" not in content_disposition:
+                            return part.get_payload(decode=True).decode()
+                else:
+                    return msg.get_payload(decode=True).decode()
+        return None
     except Exception as e:
-        ui.log_warning(f"Error checking replies for {recipient_email}: {e}")
-        # Fail-safe: If we can't check, assume they replied so we don't spam them.
-        return True
+        ui.log_warning(f"Error fetching email body for {recipient_email}: {e}")
+        return None
+
+
+def analyze_reply_sentiment(reply_text: str) -> str:
+    """Use Gemini to analyze the sentiment of an email reply."""
+    if not GEMINI_API_KEY:
+        ui.log_warning("GEMINI_API_KEY not set. Defaulting to 'Replied'.")
+        return "Replied"
+    
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel('gemini-pro')
+        
+        prompt = f"""Read this email reply from a sales prospect. Categorize their intent into EXACTLY ONE of these four statuses: 'Hot Lead' (interested, asking questions, wants to meet), 'Not Interested' (polite rejection), 'Dead' (unsubscribe, angry, spam), or 'Replied' (out of office, unclear). Output ONLY the category string.
+
+Email:
+---
+{reply_text}
+---
+Category:"""
+
+        response = model.generate_content(prompt)
+        
+        # Sanitize the output to ensure it's one of the valid categories
+        result = response.text.strip().replace("'", "").replace('"', '')
+        valid_statuses = ['Hot Lead', 'Not Interested', 'Dead', 'Replied']
+        if result in valid_statuses:
+            return result
+        else:
+            ui.log_warning(f"Gemini returned an invalid category: '{result}'. Defaulting to 'Replied'.")
+            return "Replied" # Default fallback
+            
+    except Exception as e:
+        ui.log_error(f"Gemini analysis failed: {e}")
+        return "Replied" # Return default status on error
+
 
 def send_followup_email(recipient_email: str, url: str) -> bool:
     """Send a polite follow-up email."""
@@ -65,7 +121,7 @@ Best,
 
     try:
         msg = MIMEMultipart()
-        msg['From'] = EMAIL_USER
+        msg['From'] = f"{SENDER_NAME} <{EMAIL_USER}>"
         msg['To'] = recipient_email
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
@@ -94,8 +150,8 @@ def main(client_key: str):
         
     df = pd.read_csv(audits_file)
     
-    if "Sent Date" not in df.columns:
-        ui.log_error(f"No 'Sent Date' column found in {audits_file}. Run sniper_agent.py first.")
+    if "Status" not in df.columns:
+        ui.log_error(f"No 'Status' column found in {audits_file}.")
         return
 
     mail = get_imap_connection()
@@ -105,35 +161,41 @@ def main(client_key: str):
     followup_count = 0
     updated = False
 
-    for idx, row in ui.track(df.iterrows(), total=len(df), description="[closer]Checking for replies...[/closer]"):
+    for idx, row in ui.track(df.iterrows(), total=len(df), description="[closer]Syncing inbox...[/closer]"):
         status = str(row.get("Status", "")).lower()
-        sent_date_str = str(row.get("Sent Date", ""))
         recipient_email = row.get("Email")
         url = row.get("URL")
 
-        if status == "sent" and sent_date_str and sent_date_str != "nan":
-            try:
-                sent_date = datetime.strptime(sent_date_str, "%Y-%m-%d")
-                days_passed = (datetime.now() - sent_date).days
-                
-                if days_passed >= 3:
-                    ui.log_closer(f"Checking {recipient_email} (Sent {days_passed} days ago)...")
-                    
-                    if has_replied(mail, recipient_email):
-                        ui.log_success(f"Reply detected from {recipient_email}. Marking as 'Replied'.")
-                        df.at[idx, "Status"] = "Replied"
-                        updated = True
-                    else:
-                        ui.log_closer(f"No reply from {recipient_email}. Sending follow-up...")
-                        if send_followup_email(recipient_email, url):
-                            df.at[idx, "Status"] = "Followed Up"
-                            updated = True
-                            followup_count += 1
-                            time.sleep(random.randint(30, 60))
-            except ValueError:
-                ui.log_warning(f"Invalid date format for row {idx}: {sent_date_str}")
-                continue
+        if status in ["sent", "followed up"]:
+            reply_text = get_latest_reply_body(mail, recipient_email)
+            
+            if reply_text:
+                ui.log_closer(f"Reply detected from {recipient_email}. Analyzing content...")
+                sentiment = analyze_reply_sentiment(reply_text)
+                df.at[idx, "Status"] = sentiment
+                ui.log_success(f"Status for {recipient_email} updated to '{sentiment}'.")
+                updated = True
+                continue # Move to the next lead
 
+            # If no reply, check if it's time for a follow-up
+            if status == "sent":
+                sent_date_str = str(row.get("Sent Date", ""))
+                if sent_date_str and sent_date_str != "nan":
+                    try:
+                        sent_date = datetime.strptime(sent_date_str, "%Y-%m-%d")
+                        days_passed = (datetime.now() - sent_date).days
+                        
+                        if days_passed >= 3:
+                            ui.log_closer(f"No reply from {recipient_email} after {days_passed} days. Sending follow-up...")
+                            if send_followup_email(recipient_email, url):
+                                df.at[idx, "Status"] = "Followed Up"
+                                updated = True
+                                followup_count += 1
+                                time.sleep(random.randint(30, 60)) # Stagger emails
+                    except ValueError:
+                        ui.log_warning(f"Invalid date format for row {idx}: {sent_date_str}")
+                        continue
+    
     mail.logout()
 
     if updated:
@@ -141,7 +203,8 @@ def main(client_key: str):
         ui.display_dashboard(followups_sent=followup_count)
         ui.log_success(f"Process complete. Sent {followup_count} follow-ups and updated {audits_file}.")
     else:
-        ui.log_info("No follow-ups needed at this time.")
+        ui.log_info("No new replies or follow-ups needed at this time.")
+
 
 if __name__ == "__main__":
     import argparse
