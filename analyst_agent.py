@@ -44,15 +44,12 @@ def fetch_site_text(url: str, timeout: int = 15, retries: int = 1) -> Tuple[Opti
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
             
-            # Extract emails from mailto links to ensure they are captured
             mailtos = [a["href"].replace("mailto:", "") for a in soup.select('a[href^="mailto:"]')]
             
-            # Extract Social Media Links
             for link in soup.find_all('a', href=True):
                 href = link['href']
                 lower_href = href.lower()
                 
-                # Social Media
                 if "facebook.com" in lower_href and "sharer" not in lower_href:
                     socials["Facebook"] = href
                 elif "linkedin.com" in lower_href and "share" not in lower_href:
@@ -62,9 +59,7 @@ def fetch_site_text(url: str, timeout: int = 15, retries: int = 1) -> Tuple[Opti
                 elif "twitter.com" in lower_href or "x.com" in lower_href:
                     socials["Twitter"] = href
                 
-                # Contact Page Detection
                 if "contact" in lower_href and not socials.get("Contact_Page"):
-                    # Resolve relative URLs
                     socials["Contact_Page"] = urljoin(url, href)
 
             text = soup.get_text(separator=" ", strip=True)
@@ -74,7 +69,7 @@ def fetch_site_text(url: str, timeout: int = 15, retries: int = 1) -> Tuple[Opti
             if mailtos:
                 text += " " + " ".join(mailtos)
             ui.log_analyst(f"Successfully fetched {len(text)} characters")
-            return text[:2000], socials
+            return text[:4000], socials
         except Exception as e:
             if attempt < retries:
                 ui.log_warning(f"Attempt {attempt+1} failed for {url}: {e}. Retrying...")
@@ -104,7 +99,6 @@ def analyze_with_gemini(site_dna: str) -> Optional[str]:
         if not genai_available:
             ui.log_warning("GenAI not available, skipping Gemini analysis.")
             return None
-        # Use the modern GenerativeModel API
         try:
             ui.log_analyst("Sending prompt to Gemini...")
             model = genai.GenerativeModel('gemini-1.5-flash-latest')
@@ -118,7 +112,6 @@ def analyze_with_gemini(site_dna: str) -> Optional[str]:
     except Exception as e:
         ui.log_warning(f"Gemini API call failed: {e}")
         return None
-
 
 def heuristic_analysis(site_dna: str) -> str:
     ui.log_analyst("Running heuristic analysis...")
@@ -135,10 +128,7 @@ def heuristic_analysis(site_dna: str) -> str:
     ui.log_analyst("Heuristic triggered: Default fallback.")
     return "Your website lacks a clear, instant lead-capture mechanism, potentially losing you an estimated $18,000 annually from missed opportunities."
 
-
 def extract_email_from_text(text: str) -> Optional[str]:
-    # Basic regex for email extraction
-    # Advanced regex to catch emails buried in scripts/tags
     email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     matches = re.findall(email_pattern, text)
     
@@ -148,7 +138,6 @@ def extract_email_from_text(text: str) -> Optional[str]:
     if matches:
         for email in matches:
             lower_email = email.lower()
-            # Filter out common false positives
             if any(term in lower_email for term in ignore_terms):
                 continue
             if lower_email.endswith(ignore_exts):
@@ -183,18 +172,33 @@ def main(client_key: str):
 
             url = row.get("URL")
             site_dna, socials = fetch_site_text(url)
+            
+            combined_dna = ""
+            if site_dna:
+                combined_dna = f"--- HOMEPAGE ---\n{site_dna}\n"
+                
+                base_domain = url.rstrip("/")
+                context_paths = ["/services", "/about", "/about-us", "/faq"]
+                for path in context_paths:
+                    ui.log_analyst(f"Deep Context: Scraping {base_domain + path}...")
+                    sub_text, _ = fetch_site_text(base_domain + path, timeout=8, retries=0)
+                    if sub_text:
+                        combined_dna += f"--- {path.upper()} ---\n{sub_text}\n"
+                
+                combined_dna = combined_dna[:12000]
+
             extracted_email = None
-            if not site_dna:
+            if not combined_dna:
                 pain = "Could not fetch site content"
             else:
                 pain = None
                 if genai_available and API_KEY:
-                    pain = analyze_with_gemini(site_dna)
+                    pain = analyze_with_gemini(combined_dna)
                 if not pain:
                     ui.log_analyst("No pain point from Gemini, falling back to heuristics.")
-                    pain = heuristic_analysis(site_dna)
+                    pain = heuristic_analysis(combined_dna)
                 
-                extracted_email = extract_email_from_text(site_dna)
+                extracted_email = extract_email_from_text(combined_dna)
                 if extracted_email:
                     ui.log_success(f"Extracted email: {extracted_email}")
                 else:
@@ -238,12 +242,12 @@ def main(client_key: str):
     if not out_df.empty:
         if os.path.exists(audits_file):
             try:
-                # Safely merge existing data with new rows, preserving all columns
                 existing_df = pd.read_csv(audits_file)
+                # Safe merge that preserves all Sniper columns
                 combined_df = pd.concat([existing_df, out_df], ignore_index=True)
                 combined_df.to_csv(audits_file, index=False)
             except Exception as e:
-                ui.log_warning(f"Error merging CSV: {e}. Falling back to overwrite.")
+                ui.log_warning(f"Merge failed: {e}. Overwriting.")
                 out_df.to_csv(audits_file, index=False)
         else:
             out_df.to_csv(audits_file, index=False)
