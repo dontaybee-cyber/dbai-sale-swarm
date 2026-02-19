@@ -52,7 +52,7 @@ def apollo_fallback_search(niche, location, required_lead_count, master_domain_s
     payload = {
         "q_organization_keyword_tags": [niche],
         "organization_locations": [location],
-        "per_page": required_lead_count,
+        "per_page": 100,  # Over-fetch to bypass known duplicates
     }
 
     fallback_leads = []
@@ -119,13 +119,13 @@ def scout_leads(niche, location, client_key, num_results=25):
 
     ui.log_scout("🛰️ SCOUT: Using SerpAPI for deep-search...")
 
-    TARGET_NEW_LEADS = 25
+    TARGET_NEW_LEADS = 40
     fresh_leads = []
     search_offset = 0
     
     while len(fresh_leads) < TARGET_NEW_LEADS:
-        if search_offset >= 50:
-            ui.log_warning(f"Safety breakout: Checked 5 pages. Proceeding with {len(fresh_leads)} found leads.")
+        if search_offset >= 300:
+            ui.log_warning(f"Safety breakout: Checked 30 pages. Proceeding with {len(fresh_leads)} found leads.")
             break
 
         params = {
