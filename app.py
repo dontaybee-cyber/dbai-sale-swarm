@@ -30,9 +30,21 @@ st.set_page_config(
 def inject_custom_css():
     st.markdown(f"""
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        
+        html, body, [class*="css"] {{
+            font-family: 'Plus Jakarta Sans', sans-serif !important;
+        }}
+
+        /* Hide Streamlit Branding */
+        #MainMenu {{visibility: hidden;}}
+        header {{visibility: hidden;}}
+        footer {{visibility: hidden;}}
+        .stDeployButton {{display:none;}}
+
         /* Main Background */
         .stApp {{
-            background-color: {config.BACKGROUND_COLOR};
+            background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
         }}
         
         /* Card Styling for Containers */
@@ -61,12 +73,12 @@ def inject_custom_css():
         }}
 
         div[data-testid="stMetricValue"] {{
-            color: {config.PRIMARY_COLOR};
+            color: {{config.PRIMARY_COLOR}};
         }}
 
         /* Primary Button Styling */
         div.stButton > button[kind="primary"] {{
-            background-color: {config.PRIMARY_COLOR};
+            background-color: {{config.PRIMARY_COLOR}};
             color: white;
             border: none;
             border-radius: 8px;
@@ -220,9 +232,13 @@ def main():
         st.stop()
 
     render_header()
+    st.logo(config.LOGO_URL, icon_image=config.LOGO_URL)
+
+    # --- Sidebar User Profile ---
+    st.sidebar.markdown(f"**Logged in as:**<br><span style='color:{config.PRIMARY_COLOR};'>{st.session_state.client_key}</span>", unsafe_allow_html=True)
+    st.sidebar.divider()
 
     # --- Sidebar Footer ---
-    st.sidebar.markdown("---")
     st.sidebar.caption(f"Powered by {config.APP_NAME} v{config.APP_VERSION}")
 
     # --- Top Metrics ---

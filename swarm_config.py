@@ -2,12 +2,15 @@
 # Change these values to rebrand the app for a specific client
 APP_NAME = "DBAI SaleSwarm"
 APP_VERSION = "2.0.0"
-TAGLINE = "Enterprise Automated Outreach System"
+TAGLINE = "Enterprise AI Lead Acquisition & Outreach"
 
-# BRAND COLORS (Must match .streamlit/config.toml)
-PRIMARY_COLOR = "#4B0082"  # Indigo
-BACKGROUND_COLOR = "#F0FFFF" # Sleek Light Azure
-TEXT_COLOR = "#4B0082" # Indigo
+# BRAND COLORS
+PRIMARY_COLOR = "#4B0082" # Indigo
+SECONDARY_COLOR = "#007FFF" # Azure
+BACKGROUND_COLOR = "#F8FAFC" # Slate 50 for a clean SaaS background
+TEXT_COLOR = "#0F172A"
+LOGO_URL = "https://img.icons8.com/fluency/96/artificial-intelligence.png" # Temporary placeholder logo
+
 
 # LINKS & CONTACT
 HELP_URL = "donbeeai@cc.cc"
