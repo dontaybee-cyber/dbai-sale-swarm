@@ -246,19 +246,25 @@ def run_full_sequence(niche, location, client_key):
         status.update(label="✅ Full Swarm Sequence Complete!", state="complete")
 
 def main():
-    inject_custom_css(st.session_state.get("dark_mode", False))
+    # 1. Grab Dark Mode state BEFORE injecting CSS
+    is_dark = st.session_state.get("dark_mode", False)
+    inject_custom_css(is_dark)
     
+    # 2. Security Gate (Stops execution if not logged in)
     if not st.session_state.authenticated:
         render_login()
         st.stop()
-
-    render_header()
-    st.logo(config.LOGO_URL, icon_image=config.LOGO_URL)
-
-    # --- Sidebar User Profile ---
-    st.sidebar.toggle("🌙 Dark Mode", key="dark_mode")
+        
+    # 3. Build the Sidebar (Only renders if authenticated)
+    st.sidebar.markdown("### 🏢 DBAI Enterprise")
     st.sidebar.markdown(f"**Logged in as:**<br><span style='color:{config.PRIMARY_COLOR};'>{st.session_state.client_key}</span>", unsafe_allow_html=True)
+    
+    # The missing toggle:
+    st.sidebar.toggle("🌙 Dark Mode", key="dark_mode")
     st.sidebar.divider()
+    
+    # 4. Render the main dashboard header
+    render_header()
 
     # --- Sidebar Footer ---
     st.sidebar.caption(f"Powered by {config.APP_NAME} v{config.APP_VERSION}")
