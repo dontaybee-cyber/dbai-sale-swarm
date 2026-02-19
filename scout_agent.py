@@ -90,7 +90,7 @@ def apollo_fallback_search(niche, location, required_lead_count, master_domain_s
     return fallback_leads
 
 
-def scout_leads(niche, location, client_key, num_results=20):
+def scout_leads(niche, location, client_key, num_results=25):
     ui.SwarmHeader.display()
     ui.display_mission_briefing(niche, location)
 
@@ -119,7 +119,7 @@ def scout_leads(niche, location, client_key, num_results=20):
 
     ui.log_scout("🛰️ SCOUT: Using SerpAPI for deep-search...")
 
-    TARGET_NEW_LEADS = 15
+    TARGET_NEW_LEADS = 25
     fresh_leads = []
     search_offset = 0
     

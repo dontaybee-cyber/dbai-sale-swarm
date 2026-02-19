@@ -264,17 +264,28 @@ def main():
 
     col1, col2, col3, col4, col5 = st.columns(5)
 
+    # Safe Metric Calculations
     leads_count = len(leads_df) if not leads_df.empty else 0
-    # Task 3: Update metric to count generated audits
-    audits_generated_count = audits_df["Audit Attached"].sum() if not audits_df.empty and "Audit Attached" in audits_df.columns else 0
-    sent_count = len(audits_df[audits_df["Status"] == "Sent"]) if not audits_df.empty and "Status" in audits_df.columns else 0
-    replies_count = len(audits_df[audits_df["Status"] == "Replied"]) if not audits_df.empty and "Status" in audits_df.columns else 0
-    follow_up_count = len(audits_df[audits_df["Status"] == "Followed Up"]) if not audits_df.empty and "Status" in audits_df.columns else 0
+
+    if not audits_df.empty and "Status" in audits_df.columns:
+        # Clean the status column to lowercase for safe matching
+        status_col = audits_df["Status"].astype(str).str.lower().str.strip()
+
+        # Passed Analysis = Anything that is NOT a dead end
+        qualified_count = len(audits_df[status_col != "dead end"])
+        sent_count = len(audits_df[status_col == "sent"])
+        replies_count = len(audits_df[status_col == "replied"])
+        follow_up_count = len(audits_df[status_col == "followed up"])
+    else:
+        qualified_count = 0
+        sent_count = 0
+        replies_count = 0
+        follow_up_count = 0
 
     with col1:
         st.metric("Leads Found", leads_count)
     with col2:
-        st.metric("Audits Generated", audits_generated_count) # Updated Metric
+        st.metric("Passed Analysis", qualified_count)
     with col3:
         st.metric("Emails Sent", sent_count)
     with col4:
