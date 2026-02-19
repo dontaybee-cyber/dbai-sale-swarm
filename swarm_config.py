@@ -20,3 +20,25 @@ REPORT_BUG_EMAIL = "dontaybeellc@gmail.com"
 SCOUT_NAME = "SaleSwarm Scout"
 ANALYST_NAME = "SaleSwarm Intel"
 SNIPER_NAME = "SaleSwarm Outreach"
+
+# CHAMELEON AGENT PROFILES
+CLIENT_PROFILES = {
+    "default": {
+        "company_name": "DBAI SaleSwarm",
+        "industry": "Business Optimization",
+        "target_pain_point": "general inefficiencies",
+        "trust_link": "https://example.com"
+    },
+    "DONNY_B_MASTER_2026": { # Match this to the MASTER_KEY
+        "company_name": "Dontay Beemon Automated Innovations (DBAI)",
+        "industry": "AI Automation Consultant",
+        "target_pain_point": "absence of AI automation, chatbots, and automated booking",
+        "trust_link": "https://digitaldontaybeemon.dashnexpages.net/ai-automation-consultant-custom-ai-systems-workflow-audits/"
+    },
+    "SEO_TEST_001": {
+        "company_name": "RankBoost Media",
+        "industry": "SEO & Web Optimization Expert",
+        "target_pain_point": "poor search rankings, missing meta tags, and slow mobile load times",
+        "trust_link": "https://example-seo.com"
+    }
+}

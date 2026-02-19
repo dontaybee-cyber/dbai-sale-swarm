@@ -12,6 +12,7 @@ from typing import Optional, Tuple
 import pandas as pd
 from dotenv import load_dotenv
 import ui_manager as ui
+import swarm_config
 
 load_dotenv()
 
@@ -39,8 +40,8 @@ NOTE: Regular Gmail passwords DO NOT work with this script.
 ===========================================
 """
 
-def generate_dynamic_email(url: str, pain_point_summary: str) -> str:
-    """Generates a unique email body using Spintax."""
+def generate_dynamic_email(url: str, pain_point_summary: str, profile: dict) -> str:
+    """Generates a unique email body using Spintax and a client profile."""
     greetings = ["Hi there,", "Hello,", "Hey,", "Greetings,"]
     openers = [
         "I was just taking a look at your site",
@@ -69,17 +70,17 @@ def generate_dynamic_email(url: str, pain_point_summary: str) -> str:
 
 {pain_point_summary}
 
-I've attached a custom strategic briefing (sample_audit.pdf) showing exactly how Dontay Beemon Automated Innovations (DBAI) can plug this leak.
+I've attached a custom strategic briefing (sample_audit.pdf) showing exactly how {profile['company_name']} can plug this leak.
 
 Let's chat: {DBAI_PHONE}
-Trust link: {DBAI_LANDING_PAGE}
+Trust link: {profile['trust_link']}
 
 {sign_off}
 {SENDER_NAME}
 """
     return body
 
-def send_sniper_email(recipient_email: str, url: str, pain_point_summary: str) -> Tuple[bool, bool]:
+def send_sniper_email(recipient_email: str, url: str, pain_point_summary: str, profile: dict) -> Tuple[bool, bool]:
     """
     Send a personalized 'sniper' email with a PDF attachment.
     
@@ -87,6 +88,7 @@ def send_sniper_email(recipient_email: str, url: str, pain_point_summary: str) -
         recipient_email: Target email address
         url: Website URL being audited
         pain_point_summary: The identified business pain point and ROI projection.
+        profile: The client profile for personalizing the email.
     
     Returns:
         A tuple (email_sent_successfully, pdf_attached_successfully)
@@ -99,7 +101,7 @@ def send_sniper_email(recipient_email: str, url: str, pain_point_summary: str) -
     subject = f"A specific idea for {url.replace('https://', '').replace('http://', '').split('/')[0]}"
     
     # Generate the dynamic email body
-    body = generate_dynamic_email(url, pain_point_summary)
+    body = generate_dynamic_email(url, pain_point_summary, profile)
     
     pdf_attached = False
     try:
@@ -213,6 +215,9 @@ def main(client_key: str):
 
     sent_count = 0
     audits_generated = 0
+
+    profile = swarm_config.CLIENT_PROFILES.get(client_key, swarm_config.CLIENT_PROFILES["default"])
+    ui.log_sniper(f"Activating Chameleon Agent Profile: {profile['company_name']}")
     
     for idx, row in ui.track(pending_audits.iterrows(), total=len(pending_audits), description="[sniper]Generating Audits & Sending Emails...[/sniper]"):
         try:
@@ -249,9 +254,7 @@ def main(client_key: str):
                 audits_df.at[idx, "Status"] = "Skipped - Previously Sent"
                 continue
 
-            # This is where the original instructions said to change, but it's cleaner in send_sniper_email
-            # No change needed here, the call to send_sniper_email will handle the dynamic body
-            sent, attached = send_sniper_email(recipient_email, url, pain_point_summary)
+            sent, attached = send_sniper_email(recipient_email, url, pain_point_summary, profile)
             
             if sent:
                 audits_df.at[idx, "Status"] = "Sent"

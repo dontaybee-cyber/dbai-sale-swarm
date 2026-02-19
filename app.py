@@ -27,13 +27,34 @@ st.set_page_config(
 )
 
 # --- Task 1: Inject Custom CSS (The SaaS Polish) ---
-def inject_custom_css():
+def inject_custom_css(is_dark):
+    # Base styles
+    font_url = "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap"
+    font_family = "'Plus Jakarta Sans', sans-serif"
+
+    # Theme-specific variables
+    if is_dark:
+        bg_color = "linear-gradient(135deg, #0F172A 0%, #1E293B 100%)"
+        container_bg = "#1E293B"
+        text_color = "#F8FAFC"
+        metric_border = "#334155"
+        card_bg = "#1E293B"
+        metric_label_color = "#94A3B8"
+    else:
+        bg_color = "linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%)"
+        container_bg = "white"
+        text_color = config.TEXT_COLOR
+        metric_border = "#E2E8F0"
+        card_bg = "white"
+        metric_label_color = "#64748B"
+        
     st.markdown(f"""
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap');
+        @import url('{font_url}');
         
-        html, body, [class*="css"] {{
-            font-family: 'Plus Jakarta Sans', sans-serif !important;
+        html, body, [class*="css"], h1, h2, h3, h4, h5, h6 {{
+            font-family: {font_family} !important;
+            color: {text_color};
         }}
 
         /* Hide Streamlit Branding */
@@ -44,12 +65,12 @@ def inject_custom_css():
 
         /* Main Background */
         .stApp {{
-            background: linear-gradient(135deg, #F8FAFC 0%, #E2E8F0 100%);
+            background: {bg_color};
         }}
         
         /* Card Styling for Containers */
         div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column;"] > div[data-testid="stVerticalBlock"] {{
-            background-color: white;
+            background-color: {card_bg};
             border-radius: 12px;
             padding: 20px;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
@@ -57,8 +78,8 @@ def inject_custom_css():
 
         /* Metric Styling */
         div[data-testid="stMetric"] {{
-            background-color: #FFFFFF;
-            border: 1px solid #E2E8F0;
+            background-color: {container_bg};
+            border: 1px solid {metric_border};
             border-radius: 12px;
             padding: 15px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
@@ -68,17 +89,17 @@ def inject_custom_css():
         div[data-testid="stMetricLabel"] {{
             display: flex;
             justify-content: center;
-            color: #64748B;
+            color: {metric_label_color};
             font-weight: 600;
         }}
 
         div[data-testid="stMetricValue"] {{
-            color: {{config.PRIMARY_COLOR}};
+            color: {config.PRIMARY_COLOR if not is_dark else '#60A5FA'};
         }}
 
         /* Primary Button Styling */
         div.stButton > button[kind="primary"] {{
-            background-color: {{config.PRIMARY_COLOR}};
+            background-color: {config.PRIMARY_COLOR};
             color: white;
             border: none;
             border-radius: 8px;
@@ -225,7 +246,7 @@ def run_full_sequence(niche, location, client_key):
         status.update(label="✅ Full Swarm Sequence Complete!", state="complete")
 
 def main():
-    inject_custom_css()
+    inject_custom_css(st.session_state.get("dark_mode", False))
     
     if not st.session_state.authenticated:
         render_login()
@@ -235,6 +256,7 @@ def main():
     st.logo(config.LOGO_URL, icon_image=config.LOGO_URL)
 
     # --- Sidebar User Profile ---
+    st.sidebar.toggle("🌙 Dark Mode", key="dark_mode")
     st.sidebar.markdown(f"**Logged in as:**<br><span style='color:{config.PRIMARY_COLOR};'>{st.session_state.client_key}</span>", unsafe_allow_html=True)
     st.sidebar.divider()
 

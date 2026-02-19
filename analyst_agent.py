@@ -10,6 +10,7 @@ import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import ui_manager as ui
+import swarm_config
 
 load_dotenv()
 
@@ -78,14 +79,11 @@ def fetch_site_text(url: str, timeout: int = 15, retries: int = 1) -> Tuple[Opti
                 ui.log_warning(f"Failed to fetch {url} after {retries+1} attempts: {e}")
                 return None, socials
 
-def analyze_with_gemini(site_dna: str) -> Optional[str]:
+def analyze_with_gemini(site_dna: str, profile: dict) -> Optional[str]:
     system_instruction = (
-        "You are a top-tier AI Automation Consultant analyzing a local business's website from the provided text below."
-        "Your task is to identify the most significant 'Revenue Leak'—a clear inefficiency where the business is losing money due to a lack of automation."
-        "Scan for these specific weaknesses:"
-        "- Absence of AI automation (e.g., no chatbots for instant customer service, no automated booking or quoting systems)."
-        "- Slow site performance or poor mobile optimization (inferred from text cues like 'copyright 2015' or lack of modern framework mentions)."
-        "- Underutilized lead capture (e.g., only a contact form, no immediate callback widgets, no lead magnets)."
+        f"You are a top-tier {profile['industry']} analyzing a local business's website from the provided text below."
+        "Your task is to identify the most significant 'Revenue Leak'—a clear inefficiency where the business is losing money."
+        f"Scan for these specific weaknesses: {profile['target_pain_point']}."
         "Based on the single most critical weakness you find, perform two actions:"
         "1. Calculate a realistic 'Projected ROI' figure if they were to automate this gap. Frame it as an annual projection."
         "   - Example ROI Calculation: If a business gets 100 visitors/day and a chatbot could convert 2% of them into leads valued at $50 each, the projected ROI would be (100 * 0.02 * $50 * 365) = $36,500/year."
@@ -165,6 +163,9 @@ def main(client_key: str):
     updated = False
     ui.log_analyst(f"Found {len(leads_df)} rows in {leads_file}.")
 
+    profile = swarm_config.CLIENT_PROFILES.get(client_key, swarm_config.CLIENT_PROFILES["default"])
+    ui.log_analyst(f"Activating Chameleon Agent Profile: {profile['company_name']}")
+
     for idx, row in ui.track(leads_df.iterrows(), total=len(leads_df), description="[analyst]Analyzing Sites...[/analyst]"):
         try:
             if str(row.get("Status", "")).strip().lower() != "unscanned":
@@ -193,7 +194,7 @@ def main(client_key: str):
             else:
                 pain = None
                 if genai_available and API_KEY:
-                    pain = analyze_with_gemini(combined_dna)
+                    pain = analyze_with_gemini(combined_dna, profile)
                 if not pain:
                     ui.log_analyst("No pain point from Gemini, falling back to heuristics.")
                     pain = heuristic_analysis(combined_dna)
