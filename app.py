@@ -412,3 +412,6 @@ def main():
             st.session_state.authenticated = False
             st.session_state.client_key = None
             st.rerun()
+
+if __name__ == "__main__":
+    main()
