@@ -11,6 +11,9 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import ui_manager as ui
 import swarm_config
+from serpapi import GoogleSearch
+import streamlit as st
+import cloud_storage
 
 load_dotenv()
 
@@ -166,12 +169,28 @@ def extract_email_from_text(text: str) -> Optional[str]:
     # Fallback to the first valid email found
     return valid_emails[0]
 
+def hunt_email_via_google(domain: str) -> Optional[str]:
+    """Uses SerpAPI to search Google for the company's contact info."""
+    api_key = st.secrets.get("SERP_API_KEY", os.getenv("SERP_API_KEY"))
+    if not api_key: return None
+    try:
+        q = f'"{domain}" contact OR email OR @'
+        search = GoogleSearch({"engine": "google", "q": q, "api_key": api_key, "num": 10})
+        results = search.get_dict()
+        snippets = " ".join([res.get("snippet", "") for res in results.get("organic_results", [])])
+        return extract_email_from_text(snippets)
+    except Exception:
+        return None
+
 def main(client_key: str):
     ui.SwarmHeader.display()
     ui.log_analyst("Analyst Agent starting...")
 
     leads_file = f"leads_queue_{client_key}.csv"
     audits_file = f"audits_to_send_{client_key}.csv"
+
+    cloud_storage.sync_down(leads_file)
+    cloud_storage.sync_down(audits_file)
 
     if not os.path.exists(leads_file):
         ui.log_error(f"{leads_file} not found in current directory.")
@@ -237,6 +256,11 @@ def main(client_key: str):
                             if extracted_email:
                                 ui.log_success(f"Deep Search found email: {extracted_email}")
                                 break
+                if not extracted_email:
+                    ui.log_analyst(f"Deploying SerpAPI to hunt Google for {base_domain} email...")
+                    extracted_email = hunt_email_via_google(base_domain)
+                    if extracted_email:
+                        ui.log_success(f"SerpAPI found email via Google: {extracted_email}")
             
             status = "Dead End"
             if extracted_email:
@@ -281,6 +305,9 @@ def main(client_key: str):
     if updated:
         leads_df.to_csv(leads_file, index=False)
         ui.log_info(f"Updated {leads_file} statuses to 'Processed'.")
+
+    cloud_storage.sync_up(leads_file)
+    cloud_storage.sync_up(audits_file)
 
 if __name__ == "__main__":
     import argparse

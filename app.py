@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 import ui_manager as ui
 import swarm_config as config
+import cloud_storage
 
 # Import Agents
 # NOTE: Keep agent imports lazy (inside button handlers) so a single missing optional
@@ -162,6 +163,7 @@ def load_csv(filename, client_key):
         return pd.DataFrame()
     
     isolated_filename = f"{filename.split('.')[0]}_{client_key}.csv"
+    cloud_storage.sync_down(isolated_filename)
     if os.path.exists(isolated_filename):
         try:
             return pd.read_csv(isolated_filename)

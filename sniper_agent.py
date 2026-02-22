@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 import streamlit as st
 import ui_manager as ui
 import swarm_config
+import cloud_storage
 
 load_dotenv()
 
@@ -187,6 +188,8 @@ def main(client_key: str):
     ui.log_sniper("Sniper Agent starting...")
     
     audits_file = f"audits_to_send_{client_key}.csv"
+
+    cloud_storage.sync_down(audits_file)
     
     if not os.path.exists(audits_file):
         ui.log_error(f"{audits_file} not found in current directory.")
@@ -284,8 +287,10 @@ def main(client_key: str):
         except Exception as e:
             ui.log_error(f"Unexpected error processing row {idx}: {e}")
             audits_df.at[idx, "Status"] = "Error"
+
+        audits_df.to_csv(audits_file, index=False)
+        cloud_storage.sync_up(audits_file)
     
-    audits_df.to_csv(audits_file, index=False)
     
     if sent_count > 0:
         ui.display_dashboard(emails_sent=sent_count, audits_generated=audits_generated)

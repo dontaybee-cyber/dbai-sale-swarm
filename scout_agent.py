@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 import streamlit as st
 import ui_manager as ui
+import cloud_storage
 
 load_dotenv(override=True)
 
@@ -98,6 +99,11 @@ def apollo_fallback_search(niche, location, required_lead_count, master_domain_s
 def scout_leads(niche, location, client_key, num_results=25):
     ui.SwarmHeader.display()
     ui.display_mission_briefing(niche, location)
+
+    leads_file = f"leads_queue_{client_key}.csv"
+    audits_file = f"audits_to_send_{client_key}.csv"
+    cloud_storage.sync_down(leads_file)
+    cloud_storage.sync_down(audits_file)
 
     blacklist = (
         "yelp.", "angi.", "bbb.", "houzz.", "thumbtack.", "expertise.", 
@@ -219,6 +225,7 @@ def scout_leads(niche, location, client_key, num_results=25):
     if not new_leads_df.empty:
         header = not os.path.exists(leads_file)
         new_leads_df.to_csv(leads_file, mode='a', index=False, header=header)
+        cloud_storage.sync_up(leads_file)
         ui.display_dashboard(leads_found=len(new_leads_df))
         ui.log_success(f"{len(new_leads_df)} new leads added to {leads_file}")
     else:
