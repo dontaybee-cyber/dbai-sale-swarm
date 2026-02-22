@@ -18,6 +18,15 @@ import cloud_storage
 load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
+try:
+    HUNTER_API_KEY = st.secrets.get("HUNTER_API_KEY", os.getenv("HUNTER_API_KEY"))
+except Exception:
+    HUNTER_API_KEY = os.getenv("HUNTER_API_KEY")
+
+try:
+    from duckduckgo_search import DDGS
+except ImportError:
+    DDGS = None
 
 try:
     import google.genai as genai
@@ -182,6 +191,43 @@ def hunt_email_via_google(domain: str) -> Optional[str]:
     except Exception:
         return None
 
+def hunt_email_via_ddg(domain: str) -> Optional[str]:
+    """Zero-API fallback to hunt emails using DuckDuckGo."""
+    if DDGS is None: return None
+    try:
+        ddgs = DDGS()
+        q = f'"{domain}" contact OR email OR @'
+        # Natively scrape the text of the search results
+        results = list(ddgs.text(q, max_results=10))
+        snippets = " ".join([res.get("body", "") for res in results])
+        return extract_email_from_text(snippets)
+    except Exception:
+        return None
+
+def enrich_email_with_hunter(domain: str) -> Optional[str]:
+    """Try to find a contact email for a domain using Hunter.io Domain Search API."""
+    if not HUNTER_API_KEY:
+        return None
+    try:
+        ui.log_analyst(f"Querying Hunter.io for domain: {domain}")
+        url = "https://api.hunter.io/v2/domain-search"
+        params = {"domain": domain, "api_key": HUNTER_API_KEY}
+        resp = requests.get(url, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        emails = data.get("data", {}).get("emails", [])
+        if not emails:
+            ui.log_warning(f"Hunter found no emails for {domain}")
+            return None
+        for e in emails:
+            if e.get("value"):
+                ui.log_success(f"Hunter found email: {e.get('value')}")
+                return e.get("value")
+        return None
+    except Exception as e:
+        ui.log_warning(f"Hunter enrichment failed for {domain}: {e}")
+        return None
+
 def main(client_key: str):
     ui.SwarmHeader.display()
     ui.log_analyst("Analyst Agent starting...")
@@ -261,10 +307,23 @@ def main(client_key: str):
                                 break
                 if not extracted_email:
                     base_domain = urlparse(url).netloc # For SerpAPI, just the domain is fine
-                    ui.log_analyst(f"Deploying SerpAPI to hunt Google for {base_domain} email...")
-                    extracted_email = hunt_email_via_google(base_domain)
-                    if extracted_email:
-                        ui.log_success(f"SerpAPI found email via Google: {extracted_email}")
+                    # Level 3: SerpAPI Google Hunt
+                    if not extracted_email:
+                        ui.log_analyst(f"Deploying SerpAPI to hunt Google for {base_domain} email...")
+                        extracted_email = hunt_email_via_google(base_domain)
+                        if extracted_email: ui.log_success("SerpAPI found email via Google.")
+
+                    # Level 4: DuckDuckGo Native Hunt (Zero-API Failsafe)
+                    if not extracted_email:
+                        ui.log_analyst(f"Deploying DuckDuckGo native search for {base_domain}...")
+                        extracted_email = hunt_email_via_ddg(base_domain)
+                        if extracted_email: ui.log_success("DDG Failsafe found email.")
+
+                    # Level 5: Hunter.io Database Hunt
+                    if not extracted_email and HUNTER_API_KEY:
+                        ui.log_analyst(f"Querying Hunter.io database for {base_domain}...")
+                        extracted_email = enrich_email_with_hunter(base_domain)
+                        if extracted_email: ui.log_success("Hunter.io found email.")
             
             status = "Dead End"
             if extracted_email:
