@@ -18,6 +18,11 @@ try:
 except ImportError:
     GoogleSearch = None
 
+try:
+    from duckduckgo_search import DDGS
+except ImportError:
+    DDGS = None
+
 def get_known_domains(client_key: str) -> set:
     """The 'Ironclad Ledger': Load all known domains for a specific client to ensure zero repeated leads."""
     if not client_key:
@@ -96,6 +101,41 @@ def apollo_fallback_search(niche, location, required_lead_count, master_domain_s
     return fallback_leads
 
 
+def ddg_native_failsafe(niche, location, master_domain_set, blacklist):
+    """Zero-API native HTML scrape using DuckDuckGo."""
+    ui.log_warning("Initiating Zero-API Failsafe: Native Web Scrape...")
+    if DDGS is None:
+        ui.log_error("duckduckgo-search library missing. Cannot execute failsafe.")
+        return []
+
+    q = f"{niche} in {location} -yelp -angi -bbb -thumbtack -facebook -linkedin"
+    failsafe_leads = []
+
+    try:
+        with DDGS() as ddgs:
+            # Natively scrape up to 100 results directly through Python
+            results = list(ddgs.text(q, max_results=100))
+
+        for res in results:
+            link = res.get("href", "")
+            if not link:
+                continue
+
+            if any(bad in link.lower() for bad in blacklist):
+                continue
+
+            host = urlparse(link).netloc.lower().replace("www.", "")
+            if host and host not in master_domain_set:
+                failsafe_leads.append(link)
+                master_domain_set.add(host)
+
+        ui.log_success(f"Native Failsafe recovered {len(failsafe_leads)} uncontacted leads.")
+        return failsafe_leads
+    except Exception as e:
+        ui.log_error(f"Native Failsafe crashed: {e}")
+        return []
+
+
 def scout_leads(niche, location, client_key, num_results=25):
     ui.SwarmHeader.display()
     ui.display_mission_briefing(niche, location)
@@ -172,6 +212,10 @@ def scout_leads(niche, location, client_key, num_results=25):
                 apollo_urls = apollo_fallback_search(search_term, location, 100, master_domain_set, blacklist)
                 fresh_leads.extend([{"URL": url, "Status": "Unscanned"} for url in apollo_urls])
                 ui.log_success(f"Apollo Fallback recovered {len(apollo_urls)} leads.")
+                if not apollo_urls:
+                  # Ultimate Zero-API Fallback
+                  ddg_urls = ddg_native_failsafe(search_term, location, master_domain_set, blacklist)
+                  fresh_leads.extend([{"URL": url, "Status": "Unscanned"} for url in ddg_urls])
                 break
 
             # Task 2: Fix the Aggressive Pagination Break

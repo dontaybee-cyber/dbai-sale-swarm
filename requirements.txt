@@ -10,3 +10,4 @@ plotly
 watchdog
 rich
 huggingface-hub==0.21.4
+duckduckgo-search==5.3.1
